@@ -438,14 +438,20 @@ async function performSync() {
         const listResp = await fetch(`https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name='${filename}'&fields=files(id,modifiedTime)`, { headers });
         const listData = await listResp.json();
         const fileId = listData.files.length > 0 ? listData.files[0].id : null;
+        const driveModifiedTime = fileId ? new Date(listData.files[0].modifiedTime).getTime() : 0;
 
-        if (fileId && new Date(listData.files[0].modifiedTime).getTime() > lastSyncTimestamp + 5000) {
-            if (confirm('Newer data found on Drive. Pull it?')) {
+        if (fileId && driveModifiedTime > lastSyncTimestamp + 5000) {
+            if (confirm('Drive has a newer version. Overwrite local data with Drive data?')) {
                 const getResp = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, { headers });
-                nodes = await getResp.json();
-                saveToLocal();
-                location.reload();
-                return;
+                const remoteNodes = await getResp.json();
+                if (Array.isArray(remoteNodes)) {
+                    nodes = remoteNodes;
+                    saveToLocal();
+                    localStorage.setItem('clay_garden_last_sync', driveModifiedTime.toString());
+                    alert('Data pulled successfully!');
+                    location.reload();
+                    return;
+                }
             }
         }
 
