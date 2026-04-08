@@ -76,10 +76,15 @@
         <div class="absolute h-[60vh] w-[60vh] rounded-full blur-3xl bg-pink-500/10 -bottom-[10%] -right-[10%] animate-[clay-float_12s_infinite_reverse]"></div>
     </div>
 
-    <!-- SVG Link Layer -->
-    <svg id="link-layer" class="absolute inset-0 z-10 pointer-events-none w-full h-full"></svg>
-
-    <div id="canvas" class="absolute inset-0 z-0 opacity-40"></div>
+    <!-- Infinite Canvas Viewport -->
+    <div id="viewport" class="fixed inset-0 overflow-hidden bg-[#F4F1FA] cursor-grab active:cursor-grabbing">
+        <div id="viewport-content" class="absolute inset-0 origin-top-left">
+            <!-- SVG Link Layer moved inside -->
+            <svg id="link-layer" class="absolute inset-0 pointer-events-none w-[5000px] h-[5000px]"></svg>
+            <div id="canvas" class="absolute inset-0 w-[5000px] h-[5000px] opacity-40"></div>
+            <!-- Nodes will be appended here -->
+        </div>
+    </div>
 
     <!-- Analytics Panel (Left) -->
     <div id="analytics-panel" class="fixed left-8 top-8 bottom-8 w-80 z-40 flex flex-col gap-6 pointer-events-none">
@@ -101,6 +106,9 @@
             <div class="flex-1 min-h-0 relative">
                 <canvas id="wpm-chart" class="absolute inset-0 w-full h-full"></canvas>
             </div>
+            <button id="reset-app-btn" class="mt-4 w-full py-2 bg-pink-50 text-pink-600 rounded-xl font-bold text-xs hover:bg-pink-100 transition-colors border border-pink-100">
+                RESET LOCAL DATA
+            </button>
         </div>
     </div>
 
