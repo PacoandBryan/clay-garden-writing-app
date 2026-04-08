@@ -402,30 +402,45 @@ async function performSync() {
         const listData = await listResp.json();
         const fileId = listData.files.length > 0 ? listData.files[0].id : null;
         const driveModifiedTime = fileId ? new Date(listData.files[0].modifiedTime).getTime() : 0;
+
+        // Pull newer data
         if (fileId && driveModifiedTime > lastSyncTimestamp + 5000) {
             if (confirm('Drive has a newer version. Overwrite local data with Drive data?')) {
                 const getResp = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, { headers });
                 const remoteNodes = await getResp.json();
                 if (Array.isArray(remoteNodes)) {
-                    nodes = remoteNodes; saveToLocal();
+                    nodes = remoteNodes;
+                    localStorage.setItem('clay_garden_nodes', JSON.stringify(nodes));
                     localStorage.setItem('clay_garden_last_sync', driveModifiedTime.toString());
-                    alert('Data pulled successfully!'); location.reload(); return;
+                    alert('Data pulled successfully!'); 
+                    location.reload(); 
+                    return;
                 }
             }
         }
+
+        // Push local data
         const boundary = 'foo_bar_baz';
         const metadata = { name: filename, parents: ['appDataFolder'] };
-        const body = `--${boundary}\nContent-Type: application/json\n\n${JSON.stringify(metadata)}\n--${boundary}\nContent-Type: application/json\n\n${JSON.stringify(nodes)}\n--${boundary}--`;
+        const body = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n` +
+                     `--${boundary}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify(nodes)}\r\n` +
+                     `--${boundary}--`;
+        
         const url = fileId ? `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=multipart` : `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart`;
         const uploadResp = await fetch(url, {
             method: fileId ? 'PATCH' : 'POST',
             headers: { ...headers, 'Content-Type': `multipart/related; boundary=${boundary}` },
             body: body
         });
+
         if (uploadResp.ok) {
-            lastSyncTimestamp = Date.now();
+            const updateInfo = await uploadResp.json();
+            // Important: Use the actual modified time from the server response
+            const finalModifiedTime = updateInfo.modifiedTime ? new Date(updateInfo.modifiedTime).getTime() : Date.now();
+            lastSyncTimestamp = finalModifiedTime;
             localStorage.setItem('clay_garden_last_sync', lastSyncTimestamp.toString());
-            setSyncStatus('synced'); setTimeout(() => setSyncStatus('idle'), 3000);
+            setSyncStatus('synced'); 
+            setTimeout(() => setSyncStatus('idle'), 3000);
         }
     } catch (e) { console.error(e); setSyncStatus('error'); }
 }
