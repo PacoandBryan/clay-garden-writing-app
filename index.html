@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clay Garden - Sync & Connect</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <!-- Google API Scripts -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Nunito:wght@700;800;900&display=swap');
+        
+        :root {
+            --clay-canvas: #F4F1FA;
+            --clay-text: #332F3A;
+            --clay-muted: #635F69;
+            --clay-violet: #7C3AED;
+        }
+
+        body {
+            font-family: 'DM Sans', sans-serif;
+            background-color: var(--clay-canvas);
+            color: var(--clay-text);
+            overflow: hidden;
+            touch-action: none;
+        }
+
+        .font-nunito { font-family: 'Nunito', sans-serif; }
+
+        /* --- CLAY SHADOW ENGINE --- */
+        .shadow-clay-card {
+            box-shadow: 16px 16px 32px rgba(160, 150, 180, 0.2), -10px -10px 24px rgba(255, 255, 255, 0.9),
+                        inset 6px 6px 12px rgba(139, 92, 246, 0.03), inset -6px -6px 12px rgba(255, 255, 255, 1);
+        }
+        .shadow-clay-button {
+            box-shadow: 12px 12px 24px rgba(139, 92, 246, 0.3), -8px -8px 16px rgba(255, 255, 255, 0.4),
+                        inset 4px 4px 8px rgba(255, 255, 255, 0.4), inset -4px -4px 8px rgba(0, 0, 0, 0.1);
+        }
+        .shadow-clay-pressed {
+            box-shadow: inset 10px 10px 20px #d9d4e3, inset -10px -10px 20px #ffffff;
+        }
+
+        @keyframes clay-float {
+            0%, 100% { transform: translateY(0) rotate(0deg); }
+            50% { transform: translateY(-30px) rotate(3deg); }
+        }
+
+        .clay-node {
+            width: 32px; height: 32px; border-radius: 50%;
+            background: linear-gradient(135deg, #A78BFA, #7C3AED);
+            box-shadow: 10px 10px 20px rgba(124, 58, 237, 0.3), inset 6px 6px 12px rgba(255, 255, 255, 0.3);
+            cursor: grab; position: absolute; z-index: 20;
+            transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        .clay-node:active { cursor: grabbing; transform: scale(0.9); }
+
+        /* Sync Button pulse */
+        .sync-active { animation: pulse 2s infinite; }
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.6; }
+            100% { opacity: 1; }
+        }
+    </style>
+</head>
+<body class="h-full relative select-none">
+
+    <!-- Background Environment -->
+    <div class="pointer-events-none fixed inset-0 overflow-hidden -z-10">
+        <div class="absolute h-[70vh] w-[70vh] rounded-full blur-3xl bg-violet-500/10 -top-[10%] -left-[10%] animate-[clay-float_10s_infinite]"></div>
+        <div class="absolute h-[60vh] w-[60vh] rounded-full blur-3xl bg-pink-500/10 -bottom-[10%] -right-[10%] animate-[clay-float_12s_infinite_reverse]"></div>
+    </div>
+
+    <!-- SVG Link Layer -->
+    <svg id="link-layer" class="absolute inset-0 z-10 pointer-events-none w-full h-full"></svg>
+
+    <div id="canvas" class="absolute inset-0 z-0 opacity-40"></div>
+
+    <!-- Analytics Panel (Left) -->
+    <div id="analytics-panel" class="fixed left-8 top-8 bottom-8 w-80 z-40 flex flex-col gap-6 pointer-events-none">
+        <!-- Power Words -->
+        <div class="bg-white/80 backdrop-blur-xl rounded-[32px] p-6 shadow-clay-card pointer-events-auto overflow-hidden">
+            <h3 class="font-nunito font-black text-clay-text mb-4 flex items-center gap-2">
+                <i data-lucide="zap" class="w-4 h-4 text-amber-500"></i> Power Words
+            </h3>
+            <div id="power-words-list" class="space-y-2">
+                <!-- Items added via JS -->
+            </div>
+        </div>
+
+        <!-- Productivity Chart -->
+        <div class="bg-white/80 backdrop-blur-xl rounded-[32px] p-6 shadow-clay-card pointer-events-auto flex-1 flex flex-col overflow-hidden">
+            <h3 class="font-nunito font-black text-clay-text mb-4 flex items-center gap-2">
+                <i data-lucide="bar-chart-2" class="w-4 h-4 text-violet-500"></i> WPM Productivity
+            </h3>
+            <div class="flex-1 min-h-0 relative">
+                <canvas id="wpm-chart" class="absolute inset-0 w-full h-full"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- History & Export (Bottom) -->
+    <div id="history-panel" class="fixed left-96 right-40 bottom-8 h-64 bg-white/80 backdrop-blur-xl rounded-[40px] shadow-clay-card z-40 p-8 flex flex-col overflow-hidden">
+        <div class="flex justify-between items-center mb-4">
+            <h3 class="font-nunito font-black text-clay-text text-xl">Writing History</h3>
+            <button id="export-btn" class="bg-violet-600 text-white px-6 py-2 rounded-full font-bold shadow-clay-button hover:scale-105 transition-all flex items-center gap-2">
+                <i data-lucide="download" class="w-4 h-4"></i> Export Selected
+            </button>
+        </div>
+        <div class="overflow-y-auto flex-1 pr-2 custom-scrollbar">
+            <table class="w-full text-left">
+                <thead class="sticky top-0 bg-white/50 backdrop-blur-sm">
+                    <tr class="text-clay-muted text-sm font-bold border-b border-violet-100">
+                        <th class="pb-3 pl-2 w-10"><input type="checkbox" id="select-all" class="rounded border-violet-200"></th>
+                        <th class="pb-3">Date</th>
+                        <th class="pb-3">Summary</th>
+                        <th class="pb-3 text-right pr-2">Words</th>
+                    </tr>
+                </thead>
+                <tbody id="history-table-body" class="divide-y divide-violet-50">
+                    <!-- Rows added via JS -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Top Navigation (Sync) -->
+    <div class="fixed top-8 right-8 z-50 flex flex-col items-end gap-2">
+        <button id="sync-btn" class="font-nunito h-14 px-6 bg-white rounded-2xl shadow-clay-button flex items-center gap-3 text-clay-text font-bold hover:-translate-y-1 active:scale-95 transition-all">
+            <i data-lucide="cloud" class="w-5 h-5"></i>
+            <span id="sync-text">Sync to Drive</span>
+        </button>
+        <div id="sync-status" class="flex items-center gap-2 px-4 py-1.5 bg-white/50 backdrop-blur-md rounded-full text-xs font-bold text-slate-400 transition-all">
+            <div id="status-dot" class="w-2 h-2 rounded-full bg-slate-300"></div>
+            <span id="status-text">Idle</span>
+        </div>
+    </div>
+
+    <!-- FAB Button -->
+    <button id="fab" class="fixed bottom-10 right-10 w-20 h-20 bg-gradient-to-br from-[#A78BFA] to-[#7C3AED] rounded-[30px] shadow-clay-button flex items-center justify-center text-white z-50 transition-all hover:-translate-y-2 active:scale-95">
+        <i data-lucide="plus" class="w-10 h-10"></i>
+    </button>
+
+    <!-- Create Modal -->
+    <div id="create-modal" class="fixed inset-0 z-[60] hidden flex items-center justify-center p-6 bg-slate-900/10 backdrop-blur-sm">
+        <div id="modal-content" class="bg-white/80 backdrop-blur-xl w-full max-w-3xl rounded-[48px] shadow-clay-card p-10 transform scale-95 opacity-0">
+            <div class="flex items-center justify-between mb-8">
+                <h2 id="modal-title" class="font-nunito text-3xl font-extrabold text-clay-text tracking-tight">Sculpt Node</h2>
+                <button onclick="closeModal('create-modal')" class="text-clay-muted"><i data-lucide="x" class="w-6 h-6"></i></button>
+            </div>
+            <div class="space-y-6">
+                <input type="hidden" id="edit-id">
+                <div class="rounded-[24px] shadow-clay-pressed p-1 bg-[#EFEBF5]/50">
+                    <textarea id="writing-area" rows="8" class="w-full bg-transparent border-0 rounded-[20px] p-6 text-clay-text text-lg focus:ring-0" placeholder="Write..."></textarea>
+                </div>
+                <div class="grid grid-cols-2 gap-6">
+                    <div class="shadow-clay-pressed bg-[#EFEBF5]/50 rounded-[20px] px-6 py-4 flex items-center gap-3">
+                        <i data-lucide="clock" class="w-5 h-5 text-clay-muted"></i>
+                        <input id="time-spent" type="number" class="bg-transparent border-0 w-full focus:ring-0" placeholder="Mins">
+                    </div>
+                    <div class="shadow-clay-pressed bg-[#EFEBF5]/50 rounded-[20px] px-6 py-4 flex items-center gap-3">
+                        <i data-lucide="palette" class="w-5 h-5 text-clay-muted"></i>
+                        <input id="node-color" type="color" class="bg-transparent border-0 w-full h-10 p-0 rounded-lg cursor-pointer focus:ring-0" value="#7C3AED">
+                    </div>
+                </div>
+                <div class="shadow-clay-pressed bg-[#EFEBF5]/50 rounded-[20px] px-6 py-4 flex items-center gap-3">
+                    <i data-lucide="sparkles" class="w-5 h-5 text-clay-muted"></i>
+                    <input id="summary" type="text" class="bg-transparent border-0 w-full focus:ring-0" placeholder="Summary">
+                </div>
+                <button id="save-node" class="font-nunito w-full bg-gradient-to-br from-[#A78BFA] to-[#7C3AED] text-white py-5 rounded-[24px] font-black text-xl shadow-clay-button hover:-translate-y-1 active:scale-95 transition-all">BAKE NODE</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- View Modal -->
+    <div id="view-modal" class="fixed inset-0 z-[60] hidden flex items-center justify-center p-6 bg-slate-900/10 backdrop-blur-sm">
+        <div id="view-modal-content" class="bg-white/90 backdrop-blur-2xl w-full max-w-4xl rounded-[48px] shadow-clay-card flex flex-col max-h-[90vh] p-10 transform scale-95 opacity-0">
+            <div class="flex justify-between items-center mb-6">
+                <h2 id="view-summary" class="font-nunito text-3xl font-black text-clay-text"></h2>
+                <div class="flex gap-4">
+                    <button id="link-node" class="w-12 h-12 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center hover:scale-105 transition-all" title="Link to another node"><i data-lucide="link-2"></i></button>
+                    <button id="edit-node" class="w-12 h-12 rounded-xl bg-violet-100 text-violet-600 flex items-center justify-center hover:scale-105 transition-all"><i data-lucide="edit-3"></i></button>
+                    <button id="delete-node" class="w-12 h-12 rounded-xl bg-pink-100 text-pink-600 flex items-center justify-center hover:scale-105 transition-all"><i data-lucide="trash-2"></i></button>
+                    <button onclick="closeModal('view-modal')" class="text-clay-muted"><i data-lucide="x"></i></button>
+                </div>
+            </div>
+            <div class="shadow-clay-pressed bg-[#EFEBF5]/30 rounded-[32px] p-8 overflow-y-auto flex-1">
+                <p id="view-content" class="text-xl leading-relaxed text-clay-text"></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tooltip -->
+    <div id="tooltip" class="fixed pointer-events-none bg-white/90 backdrop-blur-xl shadow-clay-card rounded-[24px] p-5 z-[70] opacity-0 border border-white/50 hidden">
+        <p id="tooltip-summary" class="font-nunito font-black text-clay-text text-lg"></p>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
